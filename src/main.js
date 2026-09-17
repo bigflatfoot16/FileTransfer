@@ -41,6 +41,16 @@ function fmtEta(s) {
   const h = Math.floor(m / 60);
   return `ETA ${h}h ${String(m % 60).padStart(2,"0")}m`;
 }
+function fmtDuration(ms) {
+  if (ms < 1000) return `${ms} ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(s < 10 ? 2 : 1)} s`;
+  const totalSec = Math.floor(s);
+  const m = Math.floor(totalSec / 60), sec = totalSec % 60;
+  if (m < 60) return `${m}m ${String(sec).padStart(2, "0")}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${String(m % 60).padStart(2, "0")}m ${String(sec).padStart(2, "0")}s`;
+}
 function typeLabel(entry) {
   if (entry.is_dir) return "Folder";
   if (!entry.ext) return "File";
@@ -232,6 +242,7 @@ const progEls = {
   speed: document.querySelector("#prog-speed"),
   eta: document.querySelector("#prog-eta"),
   files: document.querySelector("#prog-files"),
+  elapsed: document.querySelector("#prog-elapsed"),
   cancel: document.querySelector("#prog-cancel"),
   close: document.querySelector("#prog-close"),
   title: document.querySelector(".w9x-title"),
@@ -245,6 +256,7 @@ function openProgress(mode) {
   progEls.speed.textContent = "— MB/s";
   progEls.eta.textContent = "ETA —";
   progEls.files.textContent = "0/0 files";
+  progEls.elapsed.textContent = "Elapsed 0.0 s";
   progEls.cancel.textContent = "Cancel";
 }
 function closeProgress() { progEls.shade.hidden = true; state.jobId = null; }
@@ -265,6 +277,8 @@ listen("swiftcopy://progress", async (e) => {
   progEls.speed.textContent = fmtSpeed(p.bytes_per_sec);
   progEls.eta.textContent = fmtEta(p.eta_secs);
   progEls.files.textContent = `${p.files_done}/${p.files_total} files`;
+  const elapsedText = fmtDuration(p.elapsed_ms || 0);
+  progEls.elapsed.textContent = p.done ? `Total time: ${elapsedText}` : `Elapsed ${elapsedText}`;
   if (p.current) progEls.current.textContent = p.current;
   if (p.done) {
     progEls.fill.style.width = "100%";
@@ -273,9 +287,10 @@ listen("swiftcopy://progress", async (e) => {
     if (p.error) {
       setFooter(`Transfer failed: ${p.error}`);
     } else if (p.cancelled) {
-      setFooter("Transfer cancelled.");
+      setFooter(`Cancelled after ${elapsedText}.`);
     } else {
-      setFooter(`Done. ${p.files_done} file(s), ${fmtSize(p.bytes_done)}.`);
+      const avg = p.elapsed_ms > 0 ? (p.bytes_done * 1000) / p.elapsed_ms : 0;
+      setFooter(`Done in ${elapsedText}. ${p.files_done} file(s), ${fmtSize(p.bytes_done)} @ ${fmtSize(avg)}/s avg.`);
     }
     // Refresh both panes so the user sees the result.
     await refresh("left"); await refresh("right");

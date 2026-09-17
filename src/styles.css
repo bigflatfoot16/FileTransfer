@@ -488,6 +488,7 @@ body {
   gap: 6px;
   font-variant-numeric: tabular-nums;
 }
+.prog-stats .prog-elapsed { grid-column: 1 / -1; }
 .prog-stats span {
   padding: 2px 6px;
   background: var(--bg);

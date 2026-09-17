@@ -29,6 +29,7 @@ pub struct ProgressEvent {
     pub current: String,
     pub bytes_per_sec: u64,
     pub eta_secs: u64,
+    pub elapsed_ms: u64,
     pub done: bool,
     pub cancelled: bool,
     pub error: Option<String>,
@@ -78,7 +79,9 @@ impl JobManager {
         let app_clone = app.clone();
         let id_clone = id.clone();
         std::thread::spawn(move || {
-            let result = run_job(app_clone.clone(), id_clone.clone(), kind, sources, destination, conflict, cancel.clone());
+            let started = Instant::now();
+            let result = run_job(app_clone.clone(), id_clone.clone(), kind, sources, destination, conflict, cancel.clone(), started);
+            let elapsed_ms = started.elapsed().as_millis() as u64;
             // Emit final event.
             let evt = match result {
                 Ok((files, bytes)) => ProgressEvent {
@@ -90,6 +93,7 @@ impl JobManager {
                     current: String::new(),
                     bytes_per_sec: 0,
                     eta_secs: 0,
+                    elapsed_ms,
                     done: true,
                     cancelled: cancel.load(Ordering::Relaxed),
                     error: None,
@@ -103,6 +107,7 @@ impl JobManager {
                     current: String::new(),
                     bytes_per_sec: 0,
                     eta_secs: 0,
+                    elapsed_ms,
                     done: true,
                     cancelled: cancel.load(Ordering::Relaxed),
                     error: Some(e.to_string()),
@@ -123,6 +128,7 @@ fn run_job(
     destination: String,
     conflict: ConflictPolicy,
     cancel: Arc<AtomicBool>,
+    started: Instant,
 ) -> anyhow::Result<(u64, u64)> {
     let dest_root = PathBuf::from(&destination);
     std::fs::create_dir_all(&dest_root).ok();
@@ -178,7 +184,6 @@ fn run_job(
         let done_flag = done_flag.clone();
         let cancel = cancel.clone();
         std::thread::spawn(move || {
-            let started = Instant::now();
             let mut last_bytes: u64 = 0;
             let mut last_time = started;
             while !done_flag.load(Ordering::Relaxed) {
@@ -190,6 +195,7 @@ fn run_job(
                 let remaining = bytes_total.saturating_sub(bd);
                 let eta = if bps > 0 { remaining / bps.max(1) } else { 0 };
                 let cur = current.lock().clone();
+                let elapsed_ms = started.elapsed().as_millis() as u64;
                 let _ = app.emit(
                     "swiftcopy://progress",
                     ProgressEvent {
@@ -201,6 +207,7 @@ fn run_job(
                         current: cur,
                         bytes_per_sec: bps,
                         eta_secs: eta,
+                        elapsed_ms,
                         done: false,
                         cancelled: cancel.load(Ordering::Relaxed),
                         error: None,
