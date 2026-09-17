@@ -74,13 +74,49 @@ async function loadPane(id, path) {
     p.path = path;
     p.entries = entries;
     p.selection.clear();
+    p.loadToken = (p.loadToken || 0) + 1; // invalidate any in-flight folder-size fetches
     sortEntries(p);
     renderList(id);
     paneEl(id).querySelector(".path-input").value = path;
     setFooter(`${entries.length} items in ${path}`);
+    // Kick off folder-size computation in the background so the UI is
+    // never blocked. A stale token means the user navigated away — drop
+    // the result.
+    computeFolderSizes(id, p.loadToken);
   } catch (e) {
     setFooter(`Error: ${e}`);
   }
+}
+
+async function computeFolderSizes(id, token) {
+  const p = state.panes[id];
+  for (let i = 0; i < p.entries.length; i++) {
+    if (p.loadToken !== token) return; // pane navigated; abandon
+    const e = p.entries[i];
+    if (!e.is_dir || e.size > 0) continue;
+    try {
+      const bytes = await invoke("cmd_folder_size", { path: e.path });
+      if (p.loadToken !== token) return;
+      e.size = bytes;
+      e.__folderSized = true;
+      // Patch the row's size cell in place; avoids re-rendering the whole list.
+      const row = paneEl(id).querySelector(`tr.row[data-idx="${i}"] td.size`);
+      if (row) row.textContent = fmtSize(bytes);
+      // Refresh totals in the status bar without disturbing selection.
+      updateTotals(id);
+    } catch { /* ignore transient errors — permission-denied etc. */ }
+  }
+}
+
+function updateTotals(id) {
+  const p = state.panes[id];
+  let total = 0, selTotal = 0;
+  p.entries.forEach((e, idx) => {
+    total += e.size || 0;
+    if (p.selection.has(idx)) selTotal += e.size || 0;
+  });
+  paneEl(id).querySelector(".sb-total").textContent = fmtSize(total);
+  paneEl(id).querySelector(".sb-selsize").textContent = fmtSize(selTotal);
 }
 async function refresh(id) { await loadPane(id, state.panes[id].path); }
 
@@ -108,28 +144,20 @@ function renderList(id) {
     const tr = document.createElement("tr");
     tr.className = "row" + (p.selection.has(idx) ? " selected" : "");
     tr.dataset.idx = idx;
+    if (e.is_dir) tr.title = "Double-click to open · Enter to open";
+    const sizeText = (e.size && e.size > 0) ? fmtSize(e.size) : (e.is_dir ? "…" : "0 B");
     tr.innerHTML = `
       <td><span class="icon ${iconClass(e)}"></span>${escapeHtml(e.name)}</td>
-      <td class="size">${e.is_dir ? "" : fmtSize(e.size)}</td>
+      <td class="size">${sizeText}</td>
       <td>${typeLabel(e)}</td>
       <td>${fmtDate(e.modified_ms)}</td>
     `;
     frag.appendChild(tr);
   });
   tbody.replaceChildren(frag);
-  // Totals: sum sizes of files only (folder sizes are unknown without a
-  // recursive scan, which would stall directory browsing).
-  let total = 0, selTotal = 0;
-  p.entries.forEach((e, idx) => {
-    if (!e.is_dir) {
-      total += e.size;
-      if (p.selection.has(idx)) selTotal += e.size;
-    }
-  });
   paneEl(id).querySelector(".sb-count").textContent = `${p.entries.length} items`;
-  paneEl(id).querySelector(".sb-total").textContent = fmtSize(total);
   paneEl(id).querySelector(".sb-selection").textContent = `${p.selection.size} selected`;
-  paneEl(id).querySelector(".sb-selsize").textContent = fmtSize(selTotal);
+  updateTotals(id);
 }
 function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
@@ -490,6 +518,10 @@ document.querySelector("#chk-hidden").addEventListener("change", async (ev) => {
 
 // Keyboard shortcuts
 window.addEventListener("keydown", (ev) => {
+  // If focus is inside a text input, don't hijack keys.
+  const t = ev.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "SELECT")) return;
+
   if (ev.key === "F5") { refresh("left"); refresh("right"); ev.preventDefault(); }
   else if (ev.key === "F6" || ev.key === "Tab") {
     if (!ev.ctrlKey && !ev.altKey && !ev.metaKey) {
@@ -501,6 +533,16 @@ window.addEventListener("keydown", (ev) => {
   else if (ev.key === "F7") { doMkdir(); }
   else if (ev.key === "F8") { beginTransfer("copy"); }
   else if (ev.key === "F9") { beginTransfer("move"); }
+  else if (ev.key === "Enter") {
+    // Enter opens the selected folder in the active pane.
+    const p = state.panes[state.active];
+    const idx = [...p.selection][0];
+    if (idx == null) return;
+    const entry = p.entries[idx];
+    if (entry && entry.is_dir) { loadPane(state.active, entry.path); ev.preventDefault(); }
+  } else if (ev.key === "Backspace") {
+    goUp(state.active); ev.preventDefault();
+  }
 });
 
 // Init

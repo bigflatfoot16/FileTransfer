@@ -198,16 +198,31 @@ fn run_job(
         std::thread::spawn(move || {
             let mut last_bytes: u64 = 0;
             let mut last_time = started;
+            // Exponential moving average keeps the speed/ETA readouts stable
+            // instead of flickering with every 50 ms sample.
+            let mut smoothed_bps: f64 = 0.0;
+            const ALPHA: f64 = 0.20; // higher = more responsive, lower = smoother
             while !done_flag.load(Ordering::Relaxed) {
-                std::thread::sleep(Duration::from_millis(50));
+                std::thread::sleep(Duration::from_millis(100));
                 let bd = bytes_done.load(Ordering::Relaxed);
                 let now = Instant::now();
                 let dt = now.duration_since(last_time).as_secs_f64().max(0.001);
-                let bps = (((bd.saturating_sub(last_bytes)) as f64) / dt) as u64;
+                let inst_bps = ((bd.saturating_sub(last_bytes)) as f64) / dt;
+                smoothed_bps = if smoothed_bps == 0.0 {
+                    inst_bps
+                } else {
+                    ALPHA * inst_bps + (1.0 - ALPHA) * smoothed_bps
+                };
                 let remaining = bytes_total.saturating_sub(bd);
-                let eta = if bps > 0 { remaining / bps.max(1) } else { 0 };
+                // Suppress ETA until we've been running long enough for the
+                // EMA to settle; a garbage ETA is worse than none.
+                let elapsed = started.elapsed();
+                let eta = if elapsed.as_millis() > 1200 && smoothed_bps > 1024.0 {
+                    (remaining as f64 / smoothed_bps) as u64
+                } else {
+                    0
+                };
                 let cur = current.lock().clone();
-                let elapsed_ms = started.elapsed().as_millis() as u64;
                 let _ = app.emit(
                     "swiftcopy://progress",
                     ProgressEvent {
@@ -217,9 +232,9 @@ fn run_job(
                         files_done: files_done.load(Ordering::Relaxed),
                         files_total,
                         current: cur,
-                        bytes_per_sec: bps,
+                        bytes_per_sec: smoothed_bps as u64,
                         eta_secs: eta,
-                        elapsed_ms,
+                        elapsed_ms: elapsed.as_millis() as u64,
                         done: false,
                         cancelled: cancel.load(Ordering::Relaxed),
                         error: None,

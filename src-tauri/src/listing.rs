@@ -85,6 +85,21 @@ fn is_hidden(name: &str, p: &Path) -> bool {
     false
 }
 
+/// Recursively sum file sizes under `path`. Symlinks are not followed, so we
+/// don't wander outside the tree the user is looking at.
+pub fn folder_size(path: &str) -> u64 {
+    let mut total: u64 = 0;
+    for entry in walkdir::WalkDir::new(path).follow_links(false) {
+        let Ok(e) = entry else { continue };
+        if e.file_type().is_file() {
+            if let Ok(m) = e.metadata() {
+                total = total.saturating_add(m.len());
+            }
+        }
+    }
+    total
+}
+
 #[derive(Serialize, Clone)]
 pub struct DriveInfo {
     pub name: String,

@@ -4,7 +4,7 @@ mod listing;
 mod fs_ops;
 mod jobs;
 
-use listing::{list_dir, DirEntryInfo, DriveInfo, list_drives};
+use listing::{list_dir, DirEntryInfo, DriveInfo, list_drives, folder_size};
 use jobs::{JobManager, JobKind};
 use serde::Serialize;
 use std::sync::Arc;
@@ -30,6 +30,11 @@ fn cmd_list_dir(path: String, show_hidden: bool) -> Result<Vec<DirEntryInfo>, St
 #[tauri::command]
 fn cmd_list_drives() -> Result<Vec<DriveInfo>, String> {
     Ok(list_drives())
+}
+
+#[tauri::command]
+fn cmd_folder_size(path: String) -> u64 {
+    folder_size(&path)
 }
 
 #[tauri::command]
@@ -91,6 +96,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             cmd_list_dir,
             cmd_list_drives,
+            cmd_folder_size,
             cmd_home_dirs,
             cmd_start_transfer,
             cmd_cancel,
