@@ -42,8 +42,8 @@
   <div class="workspace">
     <section class="pane" data-pane="left">
       <div class="pane-titlebar">
-        <span class="pane-title">Source</span>
-        <span class="pane-hint">click to activate</span>
+        <span class="pane-title">SOURCE</span>
+        <span class="pane-hint">click a file here</span>
       </div>
       <div class="path-row">
         <button class="pbtn up" title="Up one level" data-pane-btn="up">▲</button>
@@ -81,8 +81,8 @@
 
     <section class="pane" data-pane="right">
       <div class="pane-titlebar">
-        <span class="pane-title">Destination</span>
-        <span class="pane-hint">click to activate</span>
+        <span class="pane-title">DESTINATION</span>
+        <span class="pane-hint">click a folder here (or leave to use path)</span>
       </div>
       <div class="path-row">
         <button class="pbtn up" title="Up one level" data-pane-btn="up">▲</button>
@@ -119,9 +119,10 @@
     </section>
   </div>
 
-  <!-- Global status bar -->
+  <!-- Global status bar: live transfer hint + last message -->
   <div class="footer">
-    <span id="footer-status">Ready.</span>
+    <span id="transfer-hint" class="transfer-hint">Ready.</span>
+    <span id="footer-status" class="footer-status"></span>
   </div>
 
   <!-- Progress dialog (window in the 9x sense) -->

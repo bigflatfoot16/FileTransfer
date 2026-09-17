@@ -154,16 +154,19 @@ body {
   background:
     linear-gradient(to right, var(--title-idle-1), var(--title-idle-2));
 }
-.pane.active .pane-titlebar {
-  background:
-    linear-gradient(to right, var(--title-active-1), var(--title-active-2));
+/* SOURCE pane gets the classic Win2000 blue; DESTINATION gets a warmer
+   teal-ish gradient so the two roles are impossible to confuse. */
+.pane.is-source .pane-titlebar {
+  background: linear-gradient(to right, #0a246a, #a6caf0);
+}
+.pane.is-dest .pane-titlebar {
+  background: linear-gradient(to right, #1c6e3e, #a0d9b0);
 }
 .pane-hint {
   font-weight: normal;
   opacity: 0.85;
   font-size: 10px;
 }
-.pane.active .pane-hint { display: none; }
 
 .path-row {
   display: flex;
@@ -365,12 +368,29 @@ body {
 
 /* ─────────── Global footer ─────────── */
 .footer {
-  height: 22px;
+  min-height: 22px;
   padding: 4px 8px 2px 8px;
   background: var(--bg);
   border-top: 1px solid var(--hl-outer);
   box-shadow: inset 0 1px 0 var(--sh-inner);
   font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.transfer-hint {
+  font-weight: bold;
+  color: var(--title-active-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.footer-status {
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 13px;
 }
 
 /* ─────────── Modal window ─────────── */
