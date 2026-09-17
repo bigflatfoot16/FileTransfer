@@ -375,6 +375,7 @@ const progEls = {
   files: document.querySelector("#prog-files"),
   bytes: document.querySelector("#prog-bytes"),
   elapsed: document.querySelector("#prog-elapsed"),
+  mode: document.querySelector("#prog-mode"),
   cancel: document.querySelector("#prog-cancel"),
   close: document.querySelector("#prog-close"),
   title: document.querySelector(".w9x-title"),
@@ -391,6 +392,7 @@ function openProgress(mode) {
   progEls.files.textContent = "0/0 files";
   progEls.bytes.textContent = "0 B / 0 B";
   progEls.elapsed.textContent = "Elapsed 0.0 s";
+  progEls.mode.textContent = "";
   progEls.cancel.textContent = "Cancel";
 }
 function closeProgress() { progEls.shade.hidden = true; state.jobId = null; }
@@ -400,6 +402,12 @@ progEls.cancel.addEventListener("click", async () => {
   progEls.cancel.textContent = "Cancelling…";
 });
 progEls.close.addEventListener("click", closeProgress);
+
+listen("swiftcopy://info", (e) => {
+  const p = e.payload || {};
+  if (state.jobId && p.id !== state.jobId) return;
+  if (p.mode) progEls.mode.textContent = p.mode;
+});
 
 listen("swiftcopy://progress", async (e) => {
   const p = e.payload;

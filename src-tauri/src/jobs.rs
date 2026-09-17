@@ -258,8 +258,15 @@ fn run_job(
     // user needs to know exactly which files failed.
     let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
-    // Parallel workers. Cap at 4 so we don't thrash slow media (USB sticks).
-    let pool = rayon::ThreadPoolBuilder::new().num_threads(4).build()?;
+    // Pick worker count based on media type. HDDs get 1 worker to avoid
+    // head thrashing; SSDs get 4 so many small files parallelize.
+    let workers = crate::media::worker_count(&sources, &destination);
+    let mode_note = if workers == 1 { "HDD-safe (1 worker)" } else { "SSD-parallel (4 workers)" };
+    let _ = app.emit(
+        "swiftcopy://info",
+        serde_json::json!({ "id": id, "mode": mode_note, "workers": workers }),
+    );
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(workers).build()?;
     pool.install(|| {
         plan.par_iter().for_each(|(src, dest, _sz)| {
             if cancel.load(Ordering::Relaxed) {

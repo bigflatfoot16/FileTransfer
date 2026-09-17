@@ -3,6 +3,7 @@
 mod listing;
 mod fs_ops;
 mod jobs;
+mod media;
 
 use listing::{list_dir, DirEntryInfo, DriveInfo, list_drives, folder_size};
 use jobs::{JobManager, JobKind};

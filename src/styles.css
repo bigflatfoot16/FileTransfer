@@ -441,6 +441,14 @@ body {
   font-weight: bold;
   background: linear-gradient(to right, var(--title-active-1), var(--title-active-2));
 }
+.w9x-mode {
+  color: #fff;
+  font-weight: normal;
+  opacity: 0.85;
+  font-size: 10px;
+  margin-left: auto;
+  margin-right: 6px;
+}
 .w9x-close {
   width: 18px;
   height: 16px;
