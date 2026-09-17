@@ -5,7 +5,6 @@
 
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::path::Path;
 
 /// Returns true if the path likely lives on a spinning HDD.
 /// On non-Windows platforms we currently return false (assume SSD).
@@ -105,8 +104,6 @@ mod windows_impl {
 
 #[cfg(not(windows))]
 mod linux_impl {
-    use std::path::Path;
-
     // Best-effort HDD detection on Linux via /sys/block/*/queue/rotational.
     // Non-Linux Unixes return false (assume SSD).
     pub fn is_hdd(_path: &str) -> bool {
@@ -138,8 +135,8 @@ pub fn same_root(a: &str, b: &str) -> bool {
     {
         // Compare device IDs from stat.
         use std::os::unix::fs::MetadataExt;
-        let ma = std::fs::metadata(Path::new(a)).ok();
-        let mb = std::fs::metadata(Path::new(b)).ok();
+        let ma = std::fs::metadata(a).ok();
+        let mb = std::fs::metadata(b).ok();
         match (ma, mb) {
             (Some(x), Some(y)) => x.dev() == y.dev(),
             _ => false,
