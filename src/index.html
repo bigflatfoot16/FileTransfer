@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SwiftCopy</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <!-- Menu bar -->
+  <div class="menubar" role="menubar">
+    <button class="menu" data-menu="file"><u>F</u>ile</button>
+    <button class="menu" data-menu="edit"><u>E</u>dit</button>
+    <button class="menu" data-menu="view"><u>V</u>iew</button>
+    <button class="menu" data-menu="tools"><u>T</u>ools</button>
+    <button class="menu" data-menu="help"><u>H</u>elp</button>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <button class="tbtn" id="btn-copy" title="Copy selection to other pane">
+      <span class="ico ico-copy"></span><span>Copy</span>
+    </button>
+    <button class="tbtn" id="btn-move" title="Move selection to other pane">
+      <span class="ico ico-move"></span><span>Move</span>
+    </button>
+    <button class="tbtn" id="btn-delete" title="Delete selection">
+      <span class="ico ico-del"></span><span>Delete</span>
+    </button>
+    <div class="tsep"></div>
+    <button class="tbtn" id="btn-mkdir" title="New folder">
+      <span class="ico ico-newdir"></span><span>New Folder</span>
+    </button>
+    <button class="tbtn" id="btn-refresh" title="Refresh both panes">
+      <span class="ico ico-refresh"></span><span>Refresh</span>
+    </button>
+    <div class="tsep"></div>
+    <label class="tcheck"><input type="checkbox" id="chk-hidden" /> Show hidden</label>
+    <div class="tsep"></div>
+    <label class="tselect">
+      Conflict:
+      <select id="sel-conflict">
+        <option value="rename">Auto-rename</option>
+        <option value="overwrite">Overwrite</option>
+        <option value="skip">Skip</option>
+      </select>
+    </label>
+  </div>
+
+  <!-- Dual-pane workspace -->
+  <div class="workspace">
+    <section class="pane" data-pane="left">
+      <div class="pane-titlebar">
+        <span class="pane-title">Source</span>
+        <span class="pane-hint">click to activate</span>
+      </div>
+      <div class="path-row">
+        <button class="pbtn up" title="Up one level" data-pane-btn="up">▲</button>
+        <button class="pbtn home" title="Home" data-pane-btn="home">⌂</button>
+        <input class="path-input" type="text" spellcheck="false" />
+      </div>
+      <div class="drives-row"></div>
+      <div class="listing" tabindex="0">
+        <table class="filelist">
+          <thead>
+            <tr>
+              <th class="col-name" data-sort="name">Name</th>
+              <th class="col-size" data-sort="size">Size</th>
+              <th class="col-type" data-sort="type">Type</th>
+              <th class="col-date" data-sort="date">Modified</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="statusbar">
+        <span class="sb-count">0 items</span>
+        <span class="sb-sep"></span>
+        <span class="sb-selection">0 selected</span>
+      </div>
+    </section>
+
+    <section class="pane" data-pane="right">
+      <div class="pane-titlebar">
+        <span class="pane-title">Destination</span>
+        <span class="pane-hint">click to activate</span>
+      </div>
+      <div class="path-row">
+        <button class="pbtn up" title="Up one level" data-pane-btn="up">▲</button>
+        <button class="pbtn home" title="Home" data-pane-btn="home">⌂</button>
+        <input class="path-input" type="text" spellcheck="false" />
+      </div>
+      <div class="drives-row"></div>
+      <div class="listing" tabindex="0">
+        <table class="filelist">
+          <thead>
+            <tr>
+              <th class="col-name" data-sort="name">Name</th>
+              <th class="col-size" data-sort="size">Size</th>
+              <th class="col-type" data-sort="type">Type</th>
+              <th class="col-date" data-sort="date">Modified</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="statusbar">
+        <span class="sb-count">0 items</span>
+        <span class="sb-sep"></span>
+        <span class="sb-selection">0 selected</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- Global status bar -->
+  <div class="footer">
+    <span id="footer-status">Ready.</span>
+  </div>
+
+  <!-- Progress dialog (window in the 9x sense) -->
+  <div class="modal-shade" id="modal-shade" hidden>
+    <div class="win9x-window" role="dialog" aria-modal="true">
+      <div class="w9x-titlebar">
+        <span class="w9x-title">Copying…</span>
+        <button class="w9x-close" id="prog-close" aria-label="Close">×</button>
+      </div>
+      <div class="w9x-body">
+        <div class="prog-line" id="prog-current">Preparing…</div>
+        <div class="prog-bar"><div class="prog-fill" id="prog-fill"></div></div>
+        <div class="prog-stats">
+          <span id="prog-percent">0%</span>
+          <span id="prog-speed">— MB/s</span>
+          <span id="prog-eta">ETA —</span>
+          <span id="prog-files">0/0 files</span>
+        </div>
+      </div>
+      <div class="w9x-footer">
+        <button class="btn" id="prog-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Prompt dialog -->
+  <div class="modal-shade" id="prompt-shade" hidden>
+    <div class="win9x-window prompt-win">
+      <div class="w9x-titlebar">
+        <span class="w9x-title" id="prompt-title">SwiftCopy</span>
+      </div>
+      <div class="w9x-body">
+        <div class="prompt-msg" id="prompt-msg"></div>
+        <input class="prompt-input" id="prompt-input" type="text" />
+      </div>
+      <div class="w9x-footer">
+        <button class="btn" id="prompt-ok">OK</button>
+        <button class="btn" id="prompt-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./main.js"></script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" shape-rendering="crispEdges">
+  <path d="M3 1h7l3 3v11H3z" fill="#ffffff" stroke="#000"/>
+  <path d="M10 1v3h3" fill="none" stroke="#000"/>
+  <text x="4" y="12" font-family="monospace" font-size="6" fill="#0a246a">&lt;/&gt;</text>
+</svg>
