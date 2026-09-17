@@ -61,12 +61,18 @@ pub fn copy_file(
         return Ok(src_size);
     }
 
-    // Windows: use CopyFileExW directly so we can pass COPY_FILE_NO_BUFFERING
-    // (Explorer does; std::fs::copy does not) and hook the native progress
+    // Windows: use CopyFileExW directly so we can hook the native progress
     // callback for real-time updates without a separate polling thread.
+    // COPY_FILE_NO_BUFFERING is applied *only* when both endpoints are
+    // SSDs — on HDDs, we NEED the cache manager's read-ahead prefetch to
+    // sustain sequential throughput.
     #[cfg(windows)]
     {
-        return windows_native::copy_file_ex(src, &final_dest, src_size, ctx);
+        let src_str = src.to_string_lossy();
+        let dest_str = final_dest.to_string_lossy();
+        let hdd_involved =
+            crate::media::is_hdd(&src_str) || crate::media::is_hdd(&dest_str);
+        return windows_native::copy_file_ex(src, &final_dest, src_size, ctx, !hdd_involved);
     }
     // Other platforms: std::fs::copy is already optimal (copy_file_range /
     // sendfile on Linux; copyfile() on macOS). Progress is polled from the
@@ -240,11 +246,15 @@ mod windows_native {
         dest: &Path,
         src_size: u64,
         ctx: &CopyContext,
+        allow_no_buffering: bool,
     ) -> Result<u64> {
         let src_w = to_wide(src);
         let dst_w = to_wide(dest);
         let mut cancel_flag: i32 = 0;
-        let flags = if src_size >= NO_BUFFER_THRESHOLD {
+        // NO_BUFFERING helps only on SSD-to-SSD copies of large sequential
+        // files. On HDDs, the cache manager's read-ahead is essential; the
+        // caller passes allow_no_buffering=false to force buffered mode.
+        let flags = if allow_no_buffering && src_size >= NO_BUFFER_THRESHOLD {
             COPY_FILE_NO_BUFFERING
         } else {
             0

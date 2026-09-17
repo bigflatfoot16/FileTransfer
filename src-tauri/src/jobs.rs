@@ -261,7 +261,15 @@ fn run_job(
     // Pick worker count based on media type. HDDs get 1 worker to avoid
     // head thrashing; SSDs get 4 so many small files parallelize.
     let workers = crate::media::worker_count(&sources, &destination);
-    let mode_note = if workers == 1 { "HDD-safe (1 worker)" } else { "SSD-parallel (4 workers)" };
+    let src_hdd = sources.iter().any(|s| crate::media::is_hdd(s));
+    let dst_hdd = crate::media::is_hdd(&destination);
+    let mode_note = format!(
+        "{} · src={} · dst={} · buf={}",
+        if workers == 1 { "1 worker" } else { "4 workers" },
+        if src_hdd { "HDD" } else { "SSD" },
+        if dst_hdd { "HDD" } else { "SSD" },
+        if src_hdd || dst_hdd { "cached" } else { "unbuffered" },
+    );
     let _ = app.emit(
         "swiftcopy://info",
         serde_json::json!({ "id": id, "mode": mode_note, "workers": workers }),
