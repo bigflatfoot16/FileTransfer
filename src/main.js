@@ -117,8 +117,19 @@ function renderList(id) {
     frag.appendChild(tr);
   });
   tbody.replaceChildren(frag);
+  // Totals: sum sizes of files only (folder sizes are unknown without a
+  // recursive scan, which would stall directory browsing).
+  let total = 0, selTotal = 0;
+  p.entries.forEach((e, idx) => {
+    if (!e.is_dir) {
+      total += e.size;
+      if (p.selection.has(idx)) selTotal += e.size;
+    }
+  });
   paneEl(id).querySelector(".sb-count").textContent = `${p.entries.length} items`;
+  paneEl(id).querySelector(".sb-total").textContent = fmtSize(total);
   paneEl(id).querySelector(".sb-selection").textContent = `${p.selection.size} selected`;
+  paneEl(id).querySelector(".sb-selsize").textContent = fmtSize(selTotal);
 }
 function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
@@ -242,6 +253,7 @@ const progEls = {
   speed: document.querySelector("#prog-speed"),
   eta: document.querySelector("#prog-eta"),
   files: document.querySelector("#prog-files"),
+  bytes: document.querySelector("#prog-bytes"),
   elapsed: document.querySelector("#prog-elapsed"),
   cancel: document.querySelector("#prog-cancel"),
   close: document.querySelector("#prog-close"),
@@ -256,6 +268,7 @@ function openProgress(mode) {
   progEls.speed.textContent = "— MB/s";
   progEls.eta.textContent = "ETA —";
   progEls.files.textContent = "0/0 files";
+  progEls.bytes.textContent = "0 B / 0 B";
   progEls.elapsed.textContent = "Elapsed 0.0 s";
   progEls.cancel.textContent = "Cancel";
 }
@@ -277,6 +290,10 @@ listen("swiftcopy://progress", async (e) => {
   progEls.speed.textContent = fmtSpeed(p.bytes_per_sec);
   progEls.eta.textContent = fmtEta(p.eta_secs);
   progEls.files.textContent = `${p.files_done}/${p.files_total} files`;
+  const remaining = Math.max(0, (p.bytes_total || 0) - (p.bytes_done || 0));
+  progEls.bytes.textContent =
+    `${fmtSize(p.bytes_done || 0)} of ${fmtSize(p.bytes_total || 0)}` +
+    (remaining > 0 && !p.done ? `  ·  ${fmtSize(remaining)} left` : "");
   const elapsedText = fmtDuration(p.elapsed_ms || 0);
   progEls.elapsed.textContent = p.done ? `Total time: ${elapsedText}` : `Elapsed ${elapsedText}`;
   if (p.current) progEls.current.textContent = p.current;

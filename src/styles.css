@@ -341,7 +341,7 @@ body {
 .statusbar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   padding: 3px 4px 4px 4px;
   font-size: 11px;
 }
@@ -352,7 +352,14 @@ body {
   border-left:   1px solid var(--sh-inner);
   border-right:  1px solid var(--hl-outer);
   border-bottom: 1px solid var(--hl-outer);
-  min-width: 90px;
+  min-width: 70px;
+  font-variant-numeric: tabular-nums;
+}
+.statusbar .sb-total,
+.statusbar .sb-selsize {
+  min-width: 60px;
+  color: var(--text-dim);
+  text-align: right;
 }
 .sb-sep { flex: 1; }
 
@@ -488,6 +495,7 @@ body {
   gap: 6px;
   font-variant-numeric: tabular-nums;
 }
+.prog-stats .prog-bytes { grid-column: 1 / -1; font-weight: bold; }
 .prog-stats .prog-elapsed { grid-column: 1 / -1; }
 .prog-stats span {
   padding: 2px 6px;
