@@ -370,6 +370,80 @@ function confirmPrompt(title, msg) {
 // ────────── Footer ──────────
 function setFooter(msg) { document.querySelector("#footer-status").textContent = msg; }
 
+// ────────── Column resize ──────────
+const COL_MIN = 60;   // never let a column collapse below this many px
+const COL_KEYS = ["name", "size", "type", "date"];
+
+function loadColWidths(id) {
+  try {
+    const raw = localStorage.getItem(`swiftcopy.cols.${id}`);
+    if (!raw) return null;
+    const w = JSON.parse(raw);
+    return COL_KEYS.every((k) => typeof w[k] === "number") ? w : null;
+  } catch { return null; }
+}
+function saveColWidths(id, widths) {
+  try { localStorage.setItem(`swiftcopy.cols.${id}`, JSON.stringify(widths)); } catch {}
+}
+function applyColWidths(id, widths) {
+  const table = paneEl(id).querySelector("table.filelist");
+  COL_KEYS.forEach((k) => {
+    const col = table.querySelector(`col[data-col="${k}"]`);
+    if (col && widths[k]) col.style.width = widths[k] + "px";
+  });
+}
+
+function wireColumnResize(id) {
+  const table = paneEl(id).querySelector("table.filelist");
+
+  // Seed widths from saved values, or from the initial rendered widths.
+  const saved = loadColWidths(id);
+  if (saved) {
+    applyColWidths(id, saved);
+  } else {
+    // Wait a frame so the browser has laid the table out, then snapshot px widths.
+    requestAnimationFrame(() => {
+      const ths = table.querySelectorAll("thead th");
+      const w = {};
+      COL_KEYS.forEach((k, i) => { w[k] = ths[i].getBoundingClientRect().width; });
+      applyColWidths(id, w);
+      saveColWidths(id, w);
+    });
+  }
+
+  table.querySelectorAll(".col-resize").forEach((handle) => {
+    handle.addEventListener("mousedown", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const th = handle.parentElement;
+      const key = th.dataset.sort;
+      const col = table.querySelector(`col[data-col="${key}"]`);
+      const startX = ev.clientX;
+      const startWidth = th.getBoundingClientRect().width;
+      handle.classList.add("dragging");
+      document.body.style.cursor = "col-resize";
+
+      const onMove = (e) => {
+        const w = Math.max(COL_MIN, startWidth + (e.clientX - startX));
+        col.style.width = w + "px";
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        handle.classList.remove("dragging");
+        document.body.style.cursor = "";
+        // Persist all current widths (they may all shift because table-layout redistributes).
+        const ths = table.querySelectorAll("thead th");
+        const w = {};
+        COL_KEYS.forEach((k, i) => { w[k] = ths[i].getBoundingClientRect().width; });
+        saveColWidths(id, w);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+  });
+}
+
 // ────────── Wire up ──────────
 function wirePane(id) {
   const el = paneEl(id);
@@ -381,13 +455,16 @@ function wirePane(id) {
   el.addEventListener("mousedown", () => activatePane(id));
 
   el.querySelectorAll("th[data-sort]").forEach((th) => {
-    th.addEventListener("click", () => {
+    th.addEventListener("click", (ev) => {
+      // Clicks on the resize handle must not trigger a sort.
+      if (ev.target.classList.contains("col-resize")) return;
       const p = state.panes[id];
       const k = th.dataset.sort;
       if (p.sort.key === k) p.sort.dir *= -1; else { p.sort.key = k; p.sort.dir = 1; }
       sortEntries(p); renderList(id);
     });
   });
+  wireColumnResize(id);
   el.querySelector('[data-pane-btn="up"]').addEventListener("click", () => goUp(id));
   el.querySelector('[data-pane-btn="home"]').addEventListener("click", async () => {
     const h = await invoke("cmd_home_dirs");

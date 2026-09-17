@@ -7,15 +7,6 @@
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <!-- Menu bar -->
-  <div class="menubar" role="menubar">
-    <button class="menu" data-menu="file"><u>F</u>ile</button>
-    <button class="menu" data-menu="edit"><u>E</u>dit</button>
-    <button class="menu" data-menu="view"><u>V</u>iew</button>
-    <button class="menu" data-menu="tools"><u>T</u>ools</button>
-    <button class="menu" data-menu="help"><u>H</u>elp</button>
-  </div>
-
   <!-- Toolbar -->
   <div class="toolbar">
     <button class="tbtn" id="btn-copy" title="Copy selection to other pane">
@@ -62,11 +53,17 @@
       <div class="drives-row"></div>
       <div class="listing" tabindex="0">
         <table class="filelist">
+          <colgroup>
+            <col data-col="name" />
+            <col data-col="size" />
+            <col data-col="type" />
+            <col data-col="date" />
+          </colgroup>
           <thead>
             <tr>
-              <th class="col-name" data-sort="name">Name</th>
-              <th class="col-size" data-sort="size">Size</th>
-              <th class="col-type" data-sort="type">Type</th>
+              <th class="col-name" data-sort="name">Name<span class="col-resize"></span></th>
+              <th class="col-size" data-sort="size">Size<span class="col-resize"></span></th>
+              <th class="col-type" data-sort="type">Type<span class="col-resize"></span></th>
               <th class="col-date" data-sort="date">Modified</th>
             </tr>
           </thead>
@@ -95,11 +92,17 @@
       <div class="drives-row"></div>
       <div class="listing" tabindex="0">
         <table class="filelist">
+          <colgroup>
+            <col data-col="name" />
+            <col data-col="size" />
+            <col data-col="type" />
+            <col data-col="date" />
+          </colgroup>
           <thead>
             <tr>
-              <th class="col-name" data-sort="name">Name</th>
-              <th class="col-size" data-sort="size">Size</th>
-              <th class="col-type" data-sort="type">Type</th>
+              <th class="col-name" data-sort="name">Name<span class="col-resize"></span></th>
+              <th class="col-size" data-sort="size">Size<span class="col-resize"></span></th>
+              <th class="col-type" data-sort="type">Type<span class="col-resize"></span></th>
               <th class="col-date" data-sort="date">Modified</th>
             </tr>
           </thead>

@@ -45,28 +45,6 @@ body {
   flex-direction: column;
 }
 
-/* ─────────── Menu bar ─────────── */
-.menubar {
-  display: flex;
-  background: var(--bg);
-  padding: 2px 4px;
-  border-bottom: 1px solid var(--sh-inner);
-  gap: 2px;
-}
-.menu {
-  background: transparent;
-  border: 1px solid transparent;
-  padding: 3px 8px;
-  font: inherit;
-  color: inherit;
-  cursor: default;
-}
-.menu:hover {
-  border: 1px solid var(--sh-outer);
-  background: var(--hl-inner);
-}
-.menu u { text-decoration: underline; }
-
 /* ─────────── Toolbar ─────────── */
 .toolbar {
   display: flex;
@@ -282,8 +260,14 @@ body {
 .filelist {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed; /* required for the <colgroup> widths to be authoritative */
   font-size: 11px;
 }
+/* Default widths (JS overrides these once init runs). */
+.filelist col[data-col="name"] { width: 55%; }
+.filelist col[data-col="size"] { width: 12%; }
+.filelist col[data-col="type"] { width: 15%; }
+.filelist col[data-col="date"] { width: 18%; }
 .filelist thead th {
   position: sticky;
   top: 0;
@@ -298,12 +282,28 @@ body {
   z-index: 1;
   cursor: default;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+  position: sticky;
 }
 .filelist thead th:hover { background: var(--hl-inner); }
-.col-name { width: 55%; }
-.col-size { width: 12%; text-align: right; }
-.col-type { width: 15%; }
-.col-date { width: 18%; }
+.col-size { text-align: right; }
+
+/* Column-resize handle: 6px hit target straddling the right edge of each th.
+   `position: sticky` also establishes a containing block for the absolutely
+   positioned handle inside. */
+.col-resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+}
+.col-resize:hover,
+.col-resize.dragging { background: var(--sel-bg); opacity: 0.35; }
 .filelist tbody td {
   padding: 2px 6px;
   border-bottom: 1px solid #f0f0f0;
