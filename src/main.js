@@ -192,8 +192,21 @@ function onRowMouseDown(id, ev) {
   // treat it as the copy source. The pane where the destination folder
   // gets clicked keeps its selection but doesn't take the source role.
   markAsSource(id);
-  renderList(id);
+  // Update selection classes in place instead of re-rendering the whole
+  // list. If we replaced <tr>s here, the browser wouldn't fire dblclick
+  // because the second click would land on a fresh DOM node.
+  updateSelectionClasses(id);
+  updateTotals(id);
   updateTransferHint();
+}
+
+function updateSelectionClasses(id) {
+  const p = state.panes[id];
+  paneEl(id).querySelectorAll("tbody tr.row").forEach((tr) => {
+    const idx = Number(tr.dataset.idx);
+    tr.classList.toggle("selected", p.selection.has(idx));
+  });
+  paneEl(id).querySelector(".sb-selection").textContent = `${p.selection.size} selected`;
 }
 async function onRowDblClick(id, ev) {
   const tr = ev.target.closest("tr.row");
