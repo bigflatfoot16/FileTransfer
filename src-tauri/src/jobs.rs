@@ -201,7 +201,9 @@ fn run_job(
             // Exponential moving average keeps the speed/ETA readouts stable
             // instead of flickering with every 50 ms sample.
             let mut smoothed_bps: f64 = 0.0;
-            const ALPHA: f64 = 0.20; // higher = more responsive, lower = smoother
+            // Very calm smoothing so a burst of small-file completions can't
+            // spike the ETA. Explorer feels stable because it barely reacts.
+            const ALPHA: f64 = 0.08;
             while !done_flag.load(Ordering::Relaxed) {
                 std::thread::sleep(Duration::from_millis(100));
                 let bd = bytes_done.load(Ordering::Relaxed);

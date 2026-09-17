@@ -44,6 +44,39 @@ function fmtEta(s) {
   const h = Math.floor(m / 60);
   return `ETA ${h}h ${String(m % 60).padStart(2,"0")}m`;
 }
+
+// Display hysteresis for the ETA: only accept a new value when it moves the
+// countdown by more than a few seconds relative to elapsed time, or shifts
+// the shown text meaningfully. This is what makes Explorer's ETA feel like
+// it "holds and steps" instead of ticking on every frame.
+const etaState = { shown: 0, lastRefresh: 0 };
+function shownEta(newSecs) {
+  const now = performance.now();
+  if (!newSecs || !isFinite(newSecs)) {
+    if (now - etaState.lastRefresh > 2000) { etaState.shown = 0; etaState.lastRefresh = now; }
+    return etaState.shown;
+  }
+  if (etaState.shown === 0) {
+    etaState.shown = newSecs;
+    etaState.lastRefresh = now;
+    return newSecs;
+  }
+  const diff = Math.abs(newSecs - etaState.shown);
+  const relative = diff / Math.max(1, etaState.shown);
+  // Accept the new value if it moved >15%, OR by more than 5s AND at least
+  // 1s has passed since the last refresh. Long ETAs need bigger absolute
+  // changes to matter (10-min changes don't matter on a 1-hour transfer).
+  const bigEnough =
+    relative > 0.15 ||
+    (diff > 5 && now - etaState.lastRefresh > 1000) ||
+    diff > Math.max(30, etaState.shown * 0.05);
+  if (bigEnough) {
+    etaState.shown = newSecs;
+    etaState.lastRefresh = now;
+  }
+  return etaState.shown;
+}
+function resetEtaState() { etaState.shown = 0; etaState.lastRefresh = 0; }
 function fmtDuration(ms) {
   if (ms < 1000) return `${ms} ms`;
   const s = ms / 1000;
@@ -360,6 +393,7 @@ function openProgress(mode) {
   progEls.pct.textContent = "0%";
   progEls.speed.textContent = "— MB/s";
   progEls.eta.textContent = "ETA —";
+  resetEtaState();
   progEls.files.textContent = "0/0 files";
   progEls.bytes.textContent = "0 B / 0 B";
   progEls.elapsed.textContent = "Elapsed 0.0 s";
@@ -381,7 +415,7 @@ listen("swiftcopy://progress", async (e) => {
   progEls.fill.style.width = `${pct}%`;
   progEls.pct.textContent = `${pct}%`;
   progEls.speed.textContent = fmtSpeed(p.bytes_per_sec);
-  progEls.eta.textContent = fmtEta(p.eta_secs);
+  progEls.eta.textContent = fmtEta(shownEta(p.eta_secs));
   progEls.files.textContent = `${p.files_done}/${p.files_total} files`;
   const remaining = Math.max(0, (p.bytes_total || 0) - (p.bytes_done || 0));
   progEls.bytes.textContent =
