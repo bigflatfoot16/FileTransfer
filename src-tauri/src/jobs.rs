@@ -131,7 +131,10 @@ fn run_job(
     started: Instant,
 ) -> anyhow::Result<(u64, u64)> {
     let dest_root = PathBuf::from(&destination);
-    std::fs::create_dir_all(&dest_root).ok();
+    std::fs::create_dir_all(&dest_root)
+        .map_err(|e| anyhow::anyhow!("cannot create destination {}: {}", dest_root.display(), e))?;
+    // Canonicalize for a reliable self-copy check.
+    let dest_root_canon = std::fs::canonicalize(&dest_root).unwrap_or_else(|_| dest_root.clone());
 
     // Build plan: (src_file, dest_file, size).
     let mut plan: Vec<(PathBuf, PathBuf, u64)> = Vec::new();
@@ -139,6 +142,15 @@ fn run_job(
 
     for src in &sources {
         let src_path = PathBuf::from(src);
+        let src_canon = std::fs::canonicalize(&src_path).unwrap_or_else(|_| src_path.clone());
+        // Guard: refuse to copy a folder into itself or one of its descendants.
+        if src_canon == dest_root_canon || dest_root_canon.starts_with(&src_canon) {
+            return Err(anyhow::anyhow!(
+                "destination \"{}\" is the same as or inside the source \"{}\"",
+                dest_root.display(),
+                src_path.display()
+            ));
+        }
         let base_name = src_path
             .file_name()
             .map(|s| s.to_os_string())
@@ -224,30 +236,33 @@ fn run_job(
         bytes_done: bytes_done.clone(),
     };
 
+    // Collect per-file errors instead of aborting on first — a big transfer
+    // with a couple of unreadable files is still mostly a success, and the
+    // user needs to know exactly which files failed.
+    let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
     // Parallel workers. Cap at 4 so we don't thrash slow media (USB sticks).
     let pool = rayon::ThreadPoolBuilder::new().num_threads(4).build()?;
-    let plan_result: Vec<anyhow::Result<()>> = pool.install(|| {
-        plan.par_iter()
-            .map(|(src, dest, _sz)| -> anyhow::Result<()> {
-                if cancel.load(Ordering::Relaxed) {
-                    return Ok(());
+    pool.install(|| {
+        plan.par_iter().for_each(|(src, dest, _sz)| {
+            if cancel.load(Ordering::Relaxed) {
+                return;
+            }
+            {
+                let mut c = current.lock();
+                *c = src.to_string_lossy().to_string();
+            }
+            let res = match kind {
+                JobKind::Copy => fs_ops::copy_file(src, dest, conflict, &ctx),
+                JobKind::Move => fs_ops::move_file(src, dest, conflict, &ctx),
+            };
+            match res {
+                Ok(_) => { files_done.fetch_add(1, Ordering::Relaxed); }
+                Err(e) => {
+                    errors.lock().push(format!("{}: {}", src.display(), e));
                 }
-                {
-                    let mut c = current.lock();
-                    *c = src.to_string_lossy().to_string();
-                }
-                match kind {
-                    JobKind::Copy => {
-                        fs_ops::copy_file(src, dest, conflict, &ctx)?;
-                    }
-                    JobKind::Move => {
-                        fs_ops::move_file(src, dest, conflict, &ctx)?;
-                    }
-                }
-                files_done.fetch_add(1, Ordering::Relaxed);
-                Ok(())
-            })
-            .collect()
+            }
+        })
     });
 
     done_flag.store(true, Ordering::Relaxed);
@@ -263,8 +278,14 @@ fn run_job(
         }
     }
 
-    for r in plan_result {
-        r?;
+    let errs = errors.lock();
+    if !errs.is_empty() {
+        let first = errs.iter().take(3).cloned().collect::<Vec<_>>().join(" | ");
+        return Err(anyhow::anyhow!(
+            "{} file(s) failed. First: {}",
+            errs.len(),
+            first
+        ));
     }
     Ok((files_done.load(Ordering::Relaxed), bytes_done.load(Ordering::Relaxed)))
 }

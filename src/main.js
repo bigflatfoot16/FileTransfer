@@ -288,6 +288,8 @@ listen("swiftcopy://progress", async (e) => {
       setFooter(`Transfer failed: ${p.error}`);
     } else if (p.cancelled) {
       setFooter(`Cancelled after ${elapsedText}.`);
+    } else if (p.files_done === 0 && p.bytes_done === 0) {
+      setFooter(`Done in ${elapsedText}, but 0 files were transferred. Check that the source contained files and the destination is a valid folder.`);
     } else {
       const avg = p.elapsed_ms > 0 ? (p.bytes_done * 1000) / p.elapsed_ms : 0;
       setFooter(`Done in ${elapsedText}. ${p.files_done} file(s), ${fmtSize(p.bytes_done)} @ ${fmtSize(avg)}/s avg.`);
