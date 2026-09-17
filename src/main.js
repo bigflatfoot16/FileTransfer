@@ -9,9 +9,8 @@ const state = {
     right: { path: "", entries: [], selection: new Set(), sort: { key: "name", dir: 1 } },
   },
   active: "left",
-  // The pane the user is picking files FROM. Set whenever a row is selected;
-  // does NOT change when the user just clicks a folder in the other pane.
-  sourcePane: "left",
+  // Roles are fixed: left is always SOURCE, right is always DESTINATION.
+  // Users found the earlier dynamic behavior confusing.
   showHidden: false,
   jobId: null,
 };
@@ -222,10 +221,6 @@ function onRowMouseDown(id, ev) {
     p.selection.add(idx);
     lastClicked[id] = idx;
   }
-  // A selection in this pane means the user is picking files from it, so
-  // treat it as the copy source. The pane where the destination folder
-  // gets clicked keeps its selection but doesn't take the source role.
-  markAsSource(id);
   // Update selection classes in place instead of re-rendering the whole
   // list. If we replaced <tr>s here, the browser wouldn't fire dblclick
   // because the second click would land on a fresh DOM node.
@@ -255,21 +250,20 @@ function activatePane(id) {
   paneEl(id).classList.add("active");
 }
 
-function markAsSource(id) {
-  state.sourcePane = id;
-  document.querySelectorAll(".pane").forEach((el) => el.classList.remove("is-source", "is-dest"));
-  paneEl(id).classList.add("is-source");
-  paneEl(other(id)).classList.add("is-dest");
-  paneEl(id).querySelector(".pane-title").textContent = "SOURCE";
-  paneEl(other(id)).querySelector(".pane-title").textContent = "DESTINATION";
+// Fixed roles: left = SOURCE, right = DESTINATION.
+function setFixedRoles() {
+  paneEl("left").classList.add("is-source");
+  paneEl("left").classList.remove("is-dest");
+  paneEl("right").classList.add("is-dest");
+  paneEl("right").classList.remove("is-source");
+  paneEl("left").querySelector(".pane-title").textContent = "SOURCE";
+  paneEl("right").querySelector(".pane-title").textContent = "DESTINATION";
 }
 
-// Given the source pane, work out the concrete target directory:
-// if the destination pane has exactly one folder selected, use it;
-// otherwise use the destination pane's current path.
+// The destination directory: if the destination (right) pane has exactly
+// one folder selected, copy INTO that folder; otherwise use its path.
 function resolveDestination() {
-  const dst = other(state.sourcePane);
-  const dp = state.panes[dst];
+  const dp = state.panes.right;
   const sel = [...dp.selection];
   if (sel.length === 1) {
     const only = dp.entries[sel[0]];
@@ -279,14 +273,13 @@ function resolveDestination() {
 }
 
 function updateTransferHint() {
-  const src = state.sourcePane;
-  const sp = state.panes[src];
+  const sp = state.panes.left;
   const dest = resolveDestination();
   const selIdxs = [...sp.selection];
   const bytes = selIdxs.reduce((n, i) => n + (sp.entries[i]?.size || 0), 0);
   const hintEl = document.querySelector("#transfer-hint");
   if (selIdxs.length === 0) {
-    hintEl.textContent = `No selection. Click files in ${src === "left" ? "left" : "right"} pane, then Copy or Move.`;
+    hintEl.textContent = `No selection. Click files in the LEFT pane, then Copy or Move.`;
     return;
   }
   hintEl.textContent =
@@ -331,19 +324,19 @@ async function refreshDrives() {
 
 // ────────── Operations ──────────
 async function beginTransfer(mode) {
-  const src = state.sourcePane;
-  const p = state.panes[src];
+  // Toolbar Copy/Move always goes LEFT → RIGHT.
+  const p = state.panes.left;
   const sources = [...p.selection].map((i) => p.entries[i].path);
   if (sources.length === 0) {
-    setFooter(`Nothing selected in the ${src} pane. Click a file first, then hit Copy or Move.`);
+    setFooter("Nothing selected in the LEFT (source) pane. Click a file there, then hit Copy or Move.");
     return;
   }
   const dest = resolveDestination();
-  if (!dest) { setFooter("No destination — set a path in the other pane, or select a folder in it."); return; }
+  if (!dest) { setFooter("No destination — set a path in the right pane, or select a folder there."); return; }
   const conflict = document.querySelector("#sel-conflict").value;
   openProgress(mode);
-  const bytesText = fmtSize(sources.reduce((n, _, i) => n + (p.entries[[...p.selection][i]]?.size || 0), 0));
-  setFooter(`${mode === "move" ? "Moving" : "Copying"} ${sources.length} item(s), ${bytesText}, to ${dest}…`);
+  const bytes = sources.reduce((n, _, i) => n + (p.entries[[...p.selection][i]]?.size || 0), 0);
+  setFooter(`${mode === "move" ? "Moving" : "Copying"} ${sources.length} item(s), ${fmtSize(bytes)}, to ${dest}…`);
   state.jobId = await invoke("cmd_start_transfer", { sources, destination: dest, mode, conflict });
 }
 
@@ -585,7 +578,6 @@ function onDragStart(id, ev) {
   if (!p.selection.has(idx)) {
     p.selection.clear();
     p.selection.add(idx);
-    markAsSource(id);
     updateSelectionClasses(id);
     updateTotals(id);
     updateTransferHint();
@@ -781,7 +773,7 @@ window.addEventListener("keydown", (ev) => {
 (async function init() {
   wirePane("left"); wirePane("right");
   activatePane("left");
-  markAsSource("left");
+  setFixedRoles();
   const h = await invoke("cmd_home_dirs");
   const start = h.home || "/";
   await loadPane("left", start);
