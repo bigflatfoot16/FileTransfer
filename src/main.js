@@ -182,7 +182,8 @@ function renderList(id) {
     const tr = document.createElement("tr");
     tr.className = "row" + (p.selection.has(idx) ? " selected" : "");
     tr.dataset.idx = idx;
-    if (e.is_dir) tr.title = "Double-click to open · Enter to open";
+    if (e.is_dir) tr.title = "Double-click to open · Enter to open · drop files here";
+    tr.draggable = true;
     const sizeText = (e.size && e.size > 0) ? fmtSize(e.size) : (e.is_dir ? "…" : "0 B");
     tr.innerHTML = `
       <td><span class="icon ${iconClass(e)}"></span>${escapeHtml(e.name)}</td>
@@ -571,6 +572,131 @@ function wireColumnResize(id) {
   });
 }
 
+// ────────── Drag & drop ──────────
+const dragState = { fromPane: null, paths: [] };
+
+function onDragStart(id, ev) {
+  const tr = ev.target.closest("tr.row");
+  if (!tr) return;
+  const idx = Number(tr.dataset.idx);
+  const p = state.panes[id];
+  // If the dragged row isn't in the current selection, replace selection
+  // with just this row (matches Explorer's behavior).
+  if (!p.selection.has(idx)) {
+    p.selection.clear();
+    p.selection.add(idx);
+    markAsSource(id);
+    updateSelectionClasses(id);
+    updateTotals(id);
+    updateTransferHint();
+  }
+  dragState.fromPane = id;
+  dragState.paths = [...p.selection].map((i) => p.entries[i].path);
+  // Setting text data keeps the drag alive on all browsers.
+  try { ev.dataTransfer.setData("text/plain", dragState.paths.join("\n")); } catch {}
+  ev.dataTransfer.effectAllowed = "copyMove";
+}
+
+function onDragOver(id, ev) {
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = ev.shiftKey ? "move" : "copy";
+  const listing = paneEl(id).querySelector(".listing");
+  listing.classList.add("drop-target");
+  // Highlight the specific folder row under the cursor, if any.
+  const tr = ev.target.closest("tr.row");
+  paneEl(id).querySelectorAll("tr.row.drop-hover").forEach((r) => r.classList.remove("drop-hover"));
+  if (tr) {
+    const idx = Number(tr.dataset.idx);
+    const entry = state.panes[id].entries[idx];
+    if (entry && entry.is_dir) tr.classList.add("drop-hover");
+  }
+}
+
+function onDragLeave(id, ev) {
+  // Only fire when we leave the pane entirely (not moving between child elements).
+  if (ev.currentTarget.contains(ev.relatedTarget)) return;
+  paneEl(id).querySelector(".listing").classList.remove("drop-target");
+  paneEl(id).querySelectorAll("tr.row.drop-hover").forEach((r) => r.classList.remove("drop-hover"));
+}
+
+function clearDropTargets() {
+  document.querySelectorAll(".listing.drop-target").forEach((l) => l.classList.remove("drop-target"));
+  document.querySelectorAll("tr.row.drop-hover").forEach((r) => r.classList.remove("drop-hover"));
+  dragState.fromPane = null;
+  dragState.paths = [];
+}
+
+async function onDrop(id, ev) {
+  ev.preventDefault();
+  const wasMove = ev.shiftKey;
+  // Determine the target directory: a folder row under the cursor takes
+  // precedence, else the pane's current path.
+  let dest = state.panes[id].path;
+  const tr = ev.target.closest("tr.row");
+  if (tr) {
+    const idx = Number(tr.dataset.idx);
+    const entry = state.panes[id].entries[idx];
+    if (entry && entry.is_dir) dest = entry.path;
+  }
+
+  const sources = dragState.paths.slice();
+  clearDropTargets();
+  if (sources.length === 0) return;
+  if (dragState.fromPane === id && dest === state.panes[id].path) {
+    // Dropped into the same pane at its current path — nothing to do.
+    setFooter("Dropped into the same folder — no transfer.");
+    return;
+  }
+
+  const conflict = document.querySelector("#sel-conflict").value;
+  const mode = wasMove ? "move" : "copy";
+  openProgress(mode);
+  setFooter(`${wasMove ? "Moving" : "Copying"} ${sources.length} item(s) to ${dest}…`);
+  state.jobId = await invoke("cmd_start_transfer", { sources, destination: dest, mode, conflict });
+}
+
+// External drag-and-drop: files dropped from Windows Explorer into SwiftCopy.
+async function wireExternalDragDrop() {
+  try {
+    const webview = window.__TAURI__.webview.getCurrentWebview();
+    await webview.onDragDropEvent(async (event) => {
+      const t = event.payload.type;
+      if (t === "over" || t === "enter") {
+        // Highlight the pane under the cursor.
+        const paneId = paneAtPoint(event.payload.position);
+        document.querySelectorAll(".listing.drop-target").forEach((l) => l.classList.remove("drop-target"));
+        if (paneId) paneEl(paneId).querySelector(".listing").classList.add("drop-target");
+      } else if (t === "leave") {
+        document.querySelectorAll(".listing.drop-target").forEach((l) => l.classList.remove("drop-target"));
+      } else if (t === "drop") {
+        document.querySelectorAll(".listing.drop-target").forEach((l) => l.classList.remove("drop-target"));
+        const paneId = paneAtPoint(event.payload.position) || state.active;
+        const dest = state.panes[paneId].path;
+        const sources = event.payload.paths || [];
+        if (sources.length === 0) return;
+        const conflict = document.querySelector("#sel-conflict").value;
+        openProgress("copy");
+        setFooter(`Copying ${sources.length} item(s) from Explorer to ${dest}…`);
+        state.jobId = await invoke("cmd_start_transfer", { sources, destination: dest, mode: "copy", conflict });
+      }
+    });
+  } catch (e) {
+    console.warn("External drag/drop wiring failed:", e);
+  }
+}
+
+// Which pane's listing does an absolute (window-space) point fall inside?
+function paneAtPoint(pos) {
+  if (!pos) return null;
+  for (const id of ["left", "right"]) {
+    const rect = paneEl(id).querySelector(".listing").getBoundingClientRect();
+    if (pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom) {
+      return id;
+    }
+  }
+  return null;
+}
+
 // ────────── Wire up ──────────
 function wirePane(id) {
   const el = paneEl(id);
@@ -580,6 +706,13 @@ function wirePane(id) {
   tbody.addEventListener("dblclick", (ev) => onRowDblClick(id, ev));
   listing.addEventListener("focus", () => activatePane(id));
   el.addEventListener("mousedown", () => activatePane(id));
+
+  // Internal drag-and-drop: drag rows between panes.
+  tbody.addEventListener("dragstart", (ev) => onDragStart(id, ev));
+  listing.addEventListener("dragover", (ev) => onDragOver(id, ev));
+  listing.addEventListener("dragleave", (ev) => onDragLeave(id, ev));
+  listing.addEventListener("drop", (ev) => onDrop(id, ev));
+  tbody.addEventListener("dragend", () => clearDropTargets());
 
   el.querySelectorAll("th[data-sort]").forEach((th) => {
     th.addEventListener("click", (ev) => {
@@ -655,4 +788,5 @@ window.addEventListener("keydown", (ev) => {
   await loadPane("right", h.documents || start);
   await refreshDrives();
   updateTransferHint();
+  wireExternalDragDrop();
 })();

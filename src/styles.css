@@ -307,6 +307,19 @@ body {
 }
 .col-resize:hover,
 .col-resize.dragging { background: var(--sel-bg); opacity: 0.35; }
+
+/* Drag-drop visual affordance. */
+.listing.drop-target {
+  outline: 2px dashed var(--title-active-1);
+  outline-offset: -3px;
+  background: #eaf1fc;
+}
+.row.drop-hover td {
+  background: #cdd8ee !important;
+  color: var(--text) !important;
+  outline: 1px solid var(--title-active-1);
+  outline-offset: -1px;
+}
 .filelist tbody td {
   padding: 2px 6px;
   border-bottom: 1px solid #f0f0f0;
