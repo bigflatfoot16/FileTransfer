@@ -9,14 +9,19 @@
 //!   don't need per-byte progress ticks (small files).
 
 use anyhow::{anyhow, Context, Result};
-use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
-const BUF_SIZE: usize = 4 * 1024 * 1024; // 4 MiB - well beyond Explorer's default.
-const SMALL_FILE_THRESHOLD: u64 = 8 * 1024 * 1024; // Use OS fast path under this size.
+// We used to hand-roll a streaming copy for large files. That was actually
+// slower than the OS native path because our read/write loop was synchronous
+// (read → write → read → write) whereas CopyFileEx on Windows and
+// copy_file_range on Linux overlap I/O. Now we always call `fs::copy` and
+// track progress by polling the destination file's size in a background
+// thread.
+const PROGRESS_POLL: Duration = Duration::from_millis(80);
 
 #[derive(Copy, Clone, Debug)]
 pub enum ConflictPolicy {
@@ -47,50 +52,58 @@ pub fn copy_file(
         fs::create_dir_all(parent).ok();
     }
 
-    let src_meta = fs::metadata(src).with_context(|| format!("stat {}", src.display()))?;
-    let size = src_meta.len();
+    let src_size = fs::metadata(src)
+        .with_context(|| format!("stat {}", src.display()))?
+        .len();
 
-    // Fast path 1: reflink (instant on supporting filesystems).
+    // Fast path 1: reflink (instant on supporting filesystems: ReFS, btrfs,
+    // xfs with reflinks, APFS). Skipped silently on NTFS.
     if reflink_copy::reflink(src, &final_dest).is_ok() {
-        ctx.bytes_done.fetch_add(size, Ordering::Relaxed);
-        return Ok(size);
+        ctx.bytes_done.fetch_add(src_size, Ordering::Relaxed);
+        return Ok(src_size);
     }
 
-    // Fast path 2: small file, let the OS handle it (uses copy_file_range/CopyFileEx).
-    if size <= SMALL_FILE_THRESHOLD {
-        let n = fs::copy(src, &final_dest)
-            .with_context(|| format!("copy {} -> {}", src.display(), final_dest.display()))?;
-        ctx.bytes_done.fetch_add(n, Ordering::Relaxed);
-        return Ok(n);
-    }
-
-    // Streaming path: big buffer + progress ticks + cancel checks.
-    let mut reader = File::open(src).with_context(|| format!("open {}", src.display()))?;
-    hint_sequential(&reader);
-    let mut writer = File::create(&final_dest)
-        .with_context(|| format!("create {}", final_dest.display()))?;
-
-    // Pre-allocate the destination to avoid fragmentation and fs metadata churn.
-    let _ = writer.set_len(size);
-
-    let mut buf = vec![0u8; BUF_SIZE];
-    let mut total = 0u64;
-    loop {
-        if ctx.cancel.load(Ordering::Relaxed) {
-            drop(writer);
-            let _ = fs::remove_file(&final_dest);
-            return Err(anyhow!("cancelled"));
+    // Native OS copy path. On Windows this calls CopyFileExW (async overlapped
+    // I/O, adaptive buffering); on Linux it uses copy_file_range/sendfile.
+    // Both beat any hand-rolled read/write loop for large files.
+    let done_signal = Arc::new(AtomicBool::new(false));
+    let poller_bytes = ctx.bytes_done.clone();
+    let poller_dest = final_dest.clone();
+    let poller_done = done_signal.clone();
+    let poller = std::thread::spawn(move || {
+        let mut last: u64 = 0;
+        while !poller_done.load(Ordering::Relaxed) {
+            std::thread::sleep(PROGRESS_POLL);
+            if let Ok(md) = fs::metadata(&poller_dest) {
+                let now = md.len();
+                if now > last {
+                    poller_bytes.fetch_add(now - last, Ordering::Relaxed);
+                    last = now;
+                }
+            }
         }
-        let n = reader.read(&mut buf).with_context(|| "read")?;
-        if n == 0 {
-            break;
+        // Final reconciliation: make sure bytes_done reflects the full file
+        // size, in case fs::copy finished before our last poll.
+        if let Ok(md) = fs::metadata(&poller_dest) {
+            let now = md.len();
+            if now > last {
+                poller_bytes.fetch_add(now - last, Ordering::Relaxed);
+            }
         }
-        writer.write_all(&buf[..n]).with_context(|| "write")?;
-        total += n as u64;
-        ctx.bytes_done.fetch_add(n as u64, Ordering::Relaxed);
+    });
+
+    let copy_result = fs::copy(src, &final_dest)
+        .with_context(|| format!("copy {} -> {}", src.display(), final_dest.display()));
+    done_signal.store(true, Ordering::Relaxed);
+    let _ = poller.join();
+
+    // Honor a job-level cancel: if the user cancelled during this file,
+    // remove the partial destination and report cancellation.
+    if ctx.cancel.load(Ordering::Relaxed) {
+        let _ = fs::remove_file(&final_dest);
+        return Err(anyhow!("cancelled"));
     }
-    writer.flush().ok();
-    Ok(total)
+    copy_result
 }
 
 /// Try a same-filesystem rename first (instant), then fall back to copy+delete.
@@ -151,20 +164,6 @@ fn unique_path(dest: &Path) -> PathBuf {
         }
     }
     dest.to_path_buf()
-}
-
-#[cfg(unix)]
-fn hint_sequential(f: &File) {
-    use std::os::unix::io::AsRawFd;
-    unsafe {
-        // POSIX_FADV_SEQUENTIAL = 2
-        libc::posix_fadvise(f.as_raw_fd(), 0, 0, 2);
-    }
-}
-
-#[cfg(windows)]
-fn hint_sequential(_f: &File) {
-    // Perf delta on NTFS is small next to the buffer-size win — no-op.
 }
 
 pub fn delete_paths(paths: &[String]) -> Result<()> {
