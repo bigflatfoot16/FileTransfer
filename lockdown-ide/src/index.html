@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- The Content-Security-Policy is sent as a response header by the Electron main process. -->
+  <title>Lockdown IDE</title>
+</head>
+<body>
+  <div id="app" class="app">
+    <header id="titlebar" class="titlebar"></header>
+
+    <div id="workbench" class="workbench">
+      <aside id="sidebar" class="sidebar" aria-label="Explorer"></aside>
+      <div class="sash sash-vertical" data-sash="sidebar" role="separator" aria-orientation="vertical" title="Drag to resize, double-click to reset"></div>
+
+      <div id="main-area" class="main-area">
+        <div id="editor-row" class="editor-row">
+          <section class="editor-group" aria-label="Editor">
+            <div id="tabs" class="tabs" role="tablist"></div>
+            <div id="editor" class="editor" hidden></div>
+            <div id="editor-empty" class="editor-empty">
+              <span class="codicon codicon-lock editor-empty-logo"></span>
+              <p>No file is open.</p>
+              <p class="muted">Pick a file in the Explorer, or press <kbd>Ctrl+N</kbd> to create one.</p>
+            </div>
+          </section>
+          <div class="sash sash-vertical" data-sash="preview" role="separator" aria-orientation="vertical" title="Drag to resize, double-click to reset"></div>
+          <section id="preview" class="preview-pane" aria-label="Preview"></section>
+        </div>
+        <div class="sash sash-horizontal" data-sash="console" role="separator" aria-orientation="horizontal" title="Drag to resize, double-click to reset"></div>
+        <section id="console" class="console-panel" aria-label="Console"></section>
+      </div>
+    </div>
+
+    <footer id="statusbar" class="statusbar"></footer>
+  </div>
+
+  <div id="shell-required" class="shell-required" hidden>
+    <h1>Lockdown IDE</h1>
+    <p>This page only runs inside the Lockdown IDE desktop app, where its protections are enforced.</p>
+    <p class="muted">Start it with <code>npm run dev</code> or <code>npm start</code>.</p>
+  </div>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
